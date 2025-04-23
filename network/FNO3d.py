@@ -17,15 +17,29 @@ class SpectralConv3d(nn.Module):
         super(SpectralConv3d, self).__init__()
 
         """
-        3D Fourier layer. It does FFT, linear transform, and Inverse FFT.    
+        Spectral convolution layer. Performs FFT, linear transform, and Inverse FFT.
+
+        Parameters:
+        ---
+        in_channels : int,
+            Number of layer input channels
+        out_channels : int
+            Number of layer output channels
+        modes1 : int
+            Number of Fourier modes to keep in the first dimension
+        modes2 : int
+            Number of Fourier modes to keep in the second dimension
+        modes3 : int
+            Number of Fourier modes to keep in the third dimension
         """
 
         self.in_channels = in_channels
         self.out_channels = out_channels
 
-        self.modes1 = modes1  # Number of Fourier modes to multiply, at most floor(N/2) + 1
-        self.modes2 = modes2  # Number of Fourier modes to multiply, at most floor(N/2) + 1
-        self.modes3 = modes3  # Number of Fourier modes to multiply, at most floor(N/2) + 1
+        # Number of Fourier modes to multiply in each dimension. Maximum floor(N/2) + 1
+        self.modes1 = modes1
+        self.modes2 = modes2
+        self.modes3 = modes3
 
         self.scale = (1 / (in_channels * out_channels))
         self.weights1 = nn.Parameter(
@@ -38,44 +52,69 @@ class SpectralConv3d(nn.Module):
             self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, self.modes3, dtype=torch.cfloat))
 
     # Complex multiplication
-    def compl_mul3d(self, input, weights):
+    @staticmethod
+    def complex_multiplication3d(a, b):
         # (batch, in_channel, x,y,z), (in_channel, out_channel, x,y,z) -> (batch, out_channel, x,y,z)
-        return torch.einsum("bixyz,ioxyz->boxyz", input, weights)
+        return torch.einsum("bixyz,ioxyz->boxyz", a, b)
 
     def forward(self, x):
         batchsize = x.shape[0]
-        # Compute Fourier coeffcients up to factor of e^(- something constant)
+        # Compute FFT.
+        # Note change in dimension from (batch_size, channels, x, y) to (batch_size, channels, x, y//2 + 1)
+        # FFT output is Hermitian symmetric, so we should take the first modes1/modes2 and last modes1/modes2 to get low frequency components.
         x_ft = torch.fft.rfftn(x, dim=[-3, -2, -1])
 
         # Multiply relevant Fourier modes
-        out_ft = torch.zeros(batchsize, self.out_channels, x.size(-3), x.size(-2), x.size(-1) // 2 + 1, dtype=torch.cfloat,
-                             device=x.device)
+        out_ft = torch.zeros(batchsize, self.out_channels, x.size(-3), x.size(-2), x.size(-1) // 2 + 1, dtype=torch.cfloat)
         out_ft[:, :, :self.modes1, :self.modes2, :self.modes3] = \
-            self.compl_mul3d(x_ft[:, :, :self.modes1, :self.modes2, :self.modes3], self.weights1)
+            self.complex_multiplication3d(x_ft[:, :, :self.modes1, :self.modes2, :self.modes3], self.weights1)
         out_ft[:, :, -self.modes1:, :self.modes2, :self.modes3] = \
-            self.compl_mul3d(x_ft[:, :, -self.modes1:, :self.modes2, :self.modes3], self.weights2)
+            self.complex_multiplication3d(x_ft[:, :, -self.modes1:, :self.modes2, :self.modes3], self.weights2)
         out_ft[:, :, :self.modes1, -self.modes2:, :self.modes3] = \
-            self.compl_mul3d(x_ft[:, :, :self.modes1, -self.modes2:, :self.modes3], self.weights3)
+            self.complex_multiplication3d(x_ft[:, :, :self.modes1, -self.modes2:, :self.modes3], self.weights3)
         out_ft[:, :, -self.modes1:, -self.modes2:, :self.modes3] = \
-            self.compl_mul3d(x_ft[:, :, -self.modes1:, -self.modes2:, :self.modes3], self.weights4)
-
+            self.complex_multiplication3d(x_ft[:, :, -self.modes1:, -self.modes2:, :self.modes3], self.weights4)
 
         # Return to physical space
         x = torch.fft.irfftn(out_ft, s=(x.size(-3), x.size(-2), x.size(-1)))
         return x
+    
+class FourierBlock3D(nn.Module):
+    """
+    Single FNO block with spectral convolution, Conv3D, and activation function.
 
+    This block performs the following operations:
+    1. Applies a Fourier-based spectral convolution.
+    2. Applies a 1x1 convolution in the spatial domain.
+    3. Adds a residual connection between the two.
+    4. Applies a GELU activation function.
 
-class MLP(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels):
-        super(MLP, self).__init__()
-        self.mlp1 = nn.Conv3d(in_channels, mid_channels, 1)
-        self.mlp2 = nn.Conv3d(mid_channels, out_channels, 1)
+    Parameters:
+    ---
+        width: int,
+            Number of block input/output channels.
+        modes1: int,
+            Number of Fourier modes to use in the first dimension.
+        modes2: int,
+            Number of Fourier modes to use in the second dimension.
+        modes3: int,
+            Number of Fourier modes to use in the third dimension.
+    """
+    def __init__(self, width, modes1, modes2, modes3):
+        super(FourierBlock3D, self).__init__()
+        self.spectral_conv = SpectralConv3d(width, width, modes1, modes2, modes3)
+        self.w = nn.Conv3d(width, width, 1)
 
     def forward(self, x):
-        x = self.mlp1(x)
+        device = x.device
+        x1 = self.spectral_conv(x)
+        x2 = self.w(x)
+        x1 = x1.to(device)
+        x2 = x2.to(device)
+        x = x1 + x2
         x = F.gelu(x)
-        x = self.mlp2(x)
         return x
+
 
 class LP(nn.Module):
     def __init__(self, in_channels, out_channels, mid_channels):
@@ -89,75 +128,67 @@ class LP(nn.Module):
         x = self.lp2(x)
         return x
 
-class GetFNO3DModel(nn.Module):
-    def __init__(self, in_channels, out_channels, modes1, modes2, modes3, width):
-        super(GetFNO3DModel, self).__init__()
+class FNO3D(pl.LightningModule):
+    def __init__(self,
+                 net_name='Blah',
+                 in_channels=10,
+                 out_channels=3,
+                 modes1=8,
+                 modes2=8,
+                 modes3=8,
+                 width=20,
+                 num_layers=4,
+                 lr=1e-3,
+                 ):
+
+        super(FNO3D, self).__init__()
+        self.net_name = net_name
+
         self.input_channels = in_channels
         self.output_channels = out_channels
         self.modes1 = modes1
         self.modes2 = modes2
         self.modes3 = modes3
         self.width = width
+        self.num_layers = num_layers
+        self.lr = lr
+
         self.padding = 6
 
-        # self.encoder = OneHotEncoder(sparse_output=False).fit_transform()
-        # self.decoder = OneHotEncoder(sparse_output=False).inverse_transform()
         self.p = nn.Linear(self.input_channels + 3, self.width)  # input channel is 3: (sigma(x, y, z), x, y, z)
-        self.conv0 = SpectralConv3d(self.width, self.width, self.modes1, self.modes2, self.modes3)
-        self.conv1 = SpectralConv3d(self.width, self.width, self.modes1, self.modes2, self.modes3)
-        self.conv2 = SpectralConv3d(self.width, self.width, self.modes1, self.modes2, self.modes3)
-        self.conv3 = SpectralConv3d(self.width, self.width, self.modes1, self.modes2, self.modes3)
-        self.mlp0 = MLP(self.width, self.width, self.width)
-        self.mlp1 = MLP(self.width, self.width, self.width)
-        self.mlp2 = MLP(self.width, self.width, self.width)
-        self.mlp3 = MLP(self.width, self.width, self.width)
-        self.w0 = nn.Conv3d(self.width, self.width, 1)
-        self.w1 = nn.Conv3d(self.width, self.width, 1)
-        self.w2 = nn.Conv3d(self.width, self.width, 1)
-        self.w3 = nn.Conv3d(self.width, self.width, 1)
+
+        self.fno_blocks = nn.ModuleList([
+            FourierBlock3D(self.width, self.modes1, self.modes2, self.modes3) for _ in range(self.num_layers)
+        ])
+
         self.q = LP(self.width, self.output_channels, self.width * 4)
 
+        self.save_hyperparameters()
+
     def forward(self, x):
+        # Get the grid of x
         grid = self.get_grid(x.shape, x.device)
-        # f = x.clone()
         x = torch.cat((x, grid), dim=-1)
+
+        # Lift input
         x = self.p(x)
+
+        # Permute the dimensions from (batch_size, x, y, z, channels) to (batch_size, channels, x, y, z)
+        # nn.Linear operates on the last dimension
         x = x.permute(0, 4, 1, 2, 3)
         x = F.pad(x, [0, self.padding])  # XM: delete two paddding
 
-        x1 = self.conv0(x)
-        # x1 = self.mlp0(x1)
-        x2 = self.w0(x)
-        x = x1 + x2
-        x = F.gelu(x)
-
-        x1 = self.conv1(x)
-        # x1 = self.mlp1(x1)
-        x2 = self.w1(x)
-        x = x1 + x2
-        x = F.gelu(x)
-
-        x1 = self.conv2(x)
-        # x1 = self.mlp2(x1)
-        x2 = self.w2(x)
-        x = x1 + x2
-        x = F.gelu(x)
-
-        x1 = self.conv3(x)
-        # x1 = self.mlp3(x1)
-        x2 = self.w3(x)
-        x = x1 + x2
+        for layer in self.fno_blocks:
+            x = layer(x)
 
         x = x[..., :-self.padding]  # XM: delete two padding
         x = x.permute(0, 2, 3, 4, 1)  # XM: dimension coversion
         x = self.q(x)
-        #x = x.softmax(dim=-1)
 
-        # TODO: Add solid phase masking
-        # x[f == 2] = 2
         return x.float()
 
-    def get_grid(self, shape, device):
+    @staticmethod
+    def get_grid(shape, device):
         batchsize, size_x, size_y, size_z = shape[:-1]
         gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
         gridx = gridx.reshape(1, size_x, 1, 1, 1).repeat([batchsize, 1, size_y, size_z, 1])
@@ -167,107 +198,72 @@ class GetFNO3DModel(nn.Module):
         gridz = gridz.reshape(1, 1, 1, size_z, 1).repeat([batchsize, size_x, size_y, 1, 1])
         return torch.cat((gridx, gridy, gridz), dim=-1).to(device)
 
-
-class FNO3D(pl.LightningModule):
-    def __init__(self,
-                 net_name='Blah',
-                 model=GetFNO3DModel,
-                 in_channels=10,
-                 out_channels=3,
-                 modes1=8,
-                 modes2=8,
-                 modes3=8,
-                 width=20,
-                 lr=1e-3,
-                 beta_1=1,
-                 beta_2=0,
-                 ):
-
-        super(FNO3D, self).__init__()
-
-        self.net_name = net_name
-        self.lr = lr
-        self.PE_lr = lr / 10
-        self.beta_1, self.beta_2 = beta_1, beta_2
-
-        self.model = GetFNO3DModel(in_channels=in_channels,
-                                   out_channels=out_channels,
-                                   modes1=modes1,
-                                   modes2=modes2,
-                                   modes3=modes3,
-                                   width=width)
-
-    def forward(self, x):
-        return self.model(x)
-
     def training_step(self, batch, batch_idx):
-        sigma, j, _, _ = batch
-        jhat = self(sigma)
-        jhat = torch.squeeze(jhat, dim=-1)
+        sigma, y, _, _ = batch
+        yhat = self(sigma)
+        yhat = torch.squeeze(yhat, dim=-1)
 
-        loss = 0
-        for j, jhat in zip([j], [jhat]):
-            j_loss = F.mse_loss(j.view((1, -1)), jhat.view((1, -1)))
-            loss += self.beta_1 * j_loss  # + self.beta_2 * div_loss
+        loss = F.mse_loss(yhat, y)
+        # for j, jhat in zip([j], [jhat]):
+        #     j_loss = F.mse_loss(j.view((1, -1)), jhat.view((1, -1)))
+        #     loss += self.beta_1 * j_loss  # + self.beta_2 * div_loss
 
         self.log("loss", loss, on_step=False, on_epoch=True, logger=True, sync_dist=True)  # rank_zero_only=True)
-        current_lr = self.optimizers().param_groups[0]['lr']
-        self.log('learning_rate', current_lr, on_step=False, on_epoch=True, sync_dist=True)
 
         return loss
 
     def validation_step(self, batch, batch_idx):
-        sigma, j, _, _ = batch
-        jhat = self(sigma)
-        jhat = torch.squeeze(jhat, dim=-1)
+        sigma, y, _, _ = batch
+        yhat = self(sigma)
+        yhat = torch.squeeze(yhat, dim=-1)
 
-        val_loss = 0
-        for j, jhat in zip([j], [jhat]):
-            j_loss = F.mse_loss(j.view((1, -1)), jhat.view((1, -1)))
-            val_loss += self.beta_1 * j_loss  # + self.beta_2 * div_loss
+        val_loss = F.mse_loss(yhat, y)
+        # for j, jhat in zip([j], [jhat]):
+        #     j_loss = F.mse_loss(j.view((1, -1)), jhat.view((1, -1)))
+        #     val_loss += self.beta_1 * j_loss  # + self.beta_2 * div_loss
         self.log("val_loss", val_loss, on_step=False, on_epoch=True, logger=True,
                  sync_dist=True)  # rank_zero_only=True)
 
         return val_loss
 
     def test_step(self, batch, batch_idx):
-        sigma, j, _, _ = batch
+        sigma, y, _, _ = batch
 
-        jhat = self(sigma)
-        jhat = torch.squeeze(jhat, dim=-1)
+        yhat = self(sigma)
+        yhat = torch.squeeze(yhat, dim=-1)
 
-        test_loss = 0
-        component_loss = []
-        for j, jhat in zip([j], [jhat]):
-            j_loss = F.mse_loss(j.view((1, -1)), jhat.view((1, -1)))
-            component_loss.append(j_loss)
-            test_loss += self.beta_1 * j_loss  # + self.beta_2 * div_loss
+        test_loss = F.mse_loss(yhat, y)
+        # component_loss = []
+        # for j, jhat in zip([j], [jhat]):
+        #     j_loss = F.mse_loss(j.view((1, -1)), jhat.view((1, -1)))
+        #     component_loss.append(j_loss)
+        #     test_loss += self.beta_1 * j_loss  # + self.beta_2 * div_loss
         self.log("test_loss", test_loss, on_step=False, on_epoch=True, logger=True,
                  sync_dist=True)  # rank_zero_only=True)
 
         test_metrics = {
             'loss': test_loss,
-            'component_loss': component_loss
+            # 'component_loss': component_loss
         }
 
         return test_metrics
 
     def predict_step(self, batch, batch_idx):
-        sigma, j, means, stds = batch
-        jhat = self(sigma)
-        print('Normal prediction range: ', jhat.min(), jhat.max())
-        print('Normal truth range: ', j.min(), j.max())
+        sigma, y, means, stds = batch
+        yhat = self(sigma)
+        print('Normal prediction range: ', yhat.min(), yhat.max())
+        print('Normal truth range: ', y.min(), y.max())
 
-        jhat = torch.squeeze(jhat, dim=-1)
-        jhat = self.z_score_back_transform(jhat, means, stds)
-        j = self.z_score_back_transform(j, means, stds)
-        print('Back transform prediction range: ', jhat.min(), jhat.max())
-        print('Back transform truth range: ', j.min(), j.max())
+        yhat = torch.squeeze(yhat, dim=-1)
+        yhat = self.z_score_back_transform(yhat, means, stds)
+        y = self.z_score_back_transform(y, means, stds)
+        print('Back transform prediction range: ', yhat.min(), yhat.max())
+        print('Back transform truth range: ', y.min(), y.max())
         # binary_predictions = (jhat <= 0).float()
         # j = (j <= 0).float()
         predictions = {
-            'j': j,
-            'jhat': jhat  # binary_predictions,
+            'j': y,
+            'jhat': yhat  # binary_predictions,
         }
         return predictions
 

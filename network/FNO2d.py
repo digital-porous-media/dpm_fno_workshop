@@ -124,7 +124,7 @@ class FourierBlock2D(nn.Module):
         return x
 
 
-class FNO2d(pl.LightningModule):
+class FNO2D(pl.LightningModule):
     """
     Full FNO network. It contains `num_layers` FNO blocks.
 
@@ -143,8 +143,8 @@ class FNO2d(pl.LightningModule):
             Predicted solution
     """
 
-    def __init__(self, width=32, num_layers=4, modes1=8, modes2=8, lr=5e-4, hidden_p_channels=128):
-        super(FNO2d, self).__init__()
+    def __init__(self, net_name="FNO2D", width=32, num_layers=4, modes1=8, modes2=8, lr=5e-4, hidden_p_channels=128):
+        super(FNO2D, self).__init__()
         """
         Parameters:
         ---
@@ -159,13 +159,14 @@ class FNO2d(pl.LightningModule):
             hidden_p_channels: int,
                 Number of channels for the hidden layer in the projecting step. Default = 128.
         """
-
+        self.net_name = net_name
         self.modes1 = modes1
         self.modes2 = modes2
         self.width = width
         self.num_layers = num_layers
         self.hidden_p_channels = hidden_p_channels
         self.lr = lr
+        self.padding = 6
 
         # Define affine transformation to lift 3 channels to `width` channels
         self.p = nn.Linear(3, self.width)
@@ -178,6 +179,8 @@ class FNO2d(pl.LightningModule):
         # Define affine transformations to project the channel space to the output space
         self.q1 = nn.Linear(self.width, self.hidden_p_channels)
         self.q2 = nn.Linear(self.hidden_p_channels, 1)
+
+        self.save_hyperparameters()
 
     def forward(self, x):
         # Get the grid of x
@@ -235,8 +238,15 @@ class FNO2d(pl.LightningModule):
         y_hat = self(x)
         loss = F.mse_loss(y_hat, y)
         self.log('test_loss', loss, on_step=True, on_epoch=True)
+        return loss
 
-        return {"loss": loss}
+    def predict_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        # loss = F.mse_loss(y_hat, y)
+        # self.log('test_loss', loss, on_step=True, on_epoch=True)
+        predictions = {'x': x, 'y': y, 'y_hat': y_hat}
+        return predictions
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)

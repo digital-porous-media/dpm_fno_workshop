@@ -1,0 +1,19 @@
+# General parameters
+net_name: "workshop_mcf"
+seed: 189031465
+
+# Training parameters
+learning_rate: 0.001
+batch_size: 1
+epochs: 200
+val_interval: 5
+patience: 9999 # Early stopping patience
+
+# Model architecture
+modes1: 12
+modes2: 12
+modes3: 3
+width: 24
+n_layers: 4
+T_in: 8
+T_out: 16
