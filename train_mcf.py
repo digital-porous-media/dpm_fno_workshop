@@ -93,10 +93,14 @@ if __name__ == "__main__":
             json.dump(hparams, f)
 
     # Add some checkpointing callbacks
+    dirpath = Path(f"lightning_logs/{hparams['net_name']}/checkpoints")
+    dirpath.mkdir(parents=True, exist_ok=True)
     cbs = [ModelCheckpoint(monitor="loss", filename="{epoch:02d}-{loss:.2f}",
+                           dirpath=str(dirpath),
                            save_top_k=1,
                            mode="min"),
            ModelCheckpoint(monitor="val_loss", filename="{epoch:02d}-{val_loss:.2f}",
+                           dirpath=str(dirpath),
                            save_top_k=1,
                            mode="min"),
            EarlyStopping(monitor="val_loss", check_finite=False, patience=hparams['patience'])]
