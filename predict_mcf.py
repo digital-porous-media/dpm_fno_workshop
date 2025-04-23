@@ -103,6 +103,7 @@ if __name__ == "__main__":
 
             plt.subplot(1, 3, 3)
             plt.imshow(y_rel_err[:, :], vmin=-0.1, vmax=0.1)
+            plt.gca().invert_yaxis()
             plt.colorbar(orientation='horizontal', fraction=0.05,pad=0.1)
             plt.title('Rel. Error')
             plt.axis('off')
