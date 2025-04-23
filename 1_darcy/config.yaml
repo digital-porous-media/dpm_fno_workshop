@@ -13,6 +13,7 @@ patience: 9999 # Early stopping patience
 modes1: 6
 modes2: 6
 width: 64
+n_layers: 4
 
 
 

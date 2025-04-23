@@ -143,7 +143,7 @@ class FNO2d(pl.LightningModule):
             Predicted solution
     """
 
-    def __init__(self, width=32, num_layers=4, modes1=8, modes2=8, hidden_p_channels=128):
+    def __init__(self, width=32, num_layers=4, modes1=8, modes2=8, lr=5e-4, hidden_p_channels=128):
         super(FNO2d, self).__init__()
         """
         Parameters:
@@ -165,6 +165,7 @@ class FNO2d(pl.LightningModule):
         self.width = width
         self.num_layers = num_layers
         self.hidden_p_channels = hidden_p_channels
+        self.lr = lr
 
         # Define affine transformation to lift 3 channels to `width` channels
         self.p = nn.Linear(3, self.width)
@@ -238,5 +239,5 @@ class FNO2d(pl.LightningModule):
         return {"loss": loss}
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=5e-4)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         return optimizer

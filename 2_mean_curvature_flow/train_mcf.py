@@ -1,3 +1,9 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Change working directory to the script's directory
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 import lightning as pl
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from FNO3d import FNO3D

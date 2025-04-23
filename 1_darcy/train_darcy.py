@@ -1,17 +1,24 @@
-import lightning as pl
-from torch.utils.data import DataLoader, random_split
-
-from FNO2d import FNO2d
-from dataloading import DarcyDataset
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Change working directory to the script's directory
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 from omegaconf import OmegaConf
+from dataloading import DarcyDataset
+
+from torch.utils.data import DataLoader, random_split
+import lightning as pl
+
+from network.FNO2d import FNO2d
 
 cfg = OmegaConf.load("config.yaml")
 
-pl.seed_everything()
+pl.seed_everything(cfg.seed)
 
 # Load the Darcy dataset
-dataset = DarcyDataset('darcy_data.h5', resolution='resolution_64')
+dataset = DarcyDataset('darcy_data_res.h5', resolution='resolution_64')
+
 # Specify the sizes of your splits
 train_size = int(0.7 * len(dataset))  # 70% for training
 val_size = int(0.15 * len(dataset))   # 15% for validation
@@ -23,32 +30,34 @@ train_dataset, val_dataset, test_dataset = random_split(
     dataset, [train_size, val_size, test_size])
 
 # Create DataLoaders for each split
-train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+train_loader = DataLoader(
+    train_dataset, batch_size=1, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
-test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+test_loader = DataLoader(
+    test_dataset, batch_size=1, shuffle=False)
 
 # Instantiate an FNO2d model
+model = FNO2d(modes1=cfg.modes1, modes2=cfg.modes2,
+              width=cfg.width, num_layers=cfg.n_layers)
 
-modes1, modes2, width = 6, 6, 64  # example values for modes and width
-num_layers = 4
-model = FNO2d(modes1=modes1, modes2=modes2, width=width, num_layers=num_layers)
-
-# Train the model using PyTorch Lightning Trainer
-# Set gpus=1 if you want to use GPU
-trainer = pl.Trainer(max_epochs=50, strategy='auto')
+# Train the model using Lightning trainer
+trainer = pl.Trainer(max_epochs=cfg.epochs,
+                     strategy='auto',
+                     accumulate_grad_batches=cfg.batch_size,
+                     enable_checkpointing=True)
 trainer.fit(model, train_loader)
 
-test_results = trainer.test(model, dataloaders=test_loader)
+# test_results = trainer.test(model, dataloaders=test_loader)
 
 
-res_128_dataset = DarcyDataset(
-    'darcy_data.h5', resolution='resolution_128')
-_, _, res_128_dataset = random_split(
-    res_128_dataset, [80, 10, 10])
-res_128_test_loader = DataLoader(res_128_dataset, batch_size=1, shuffle=False)
-test_results = trainer.test(model, dataloaders=res_128_test_loader)
-_, _, test_dataset = random_split(
-    dataset, [train_size, val_size, test_size])
+# res_128_dataset = DarcyDataset(
+#     'darcy_data.h5', resolution='resolution_128')
+# _, _, res_128_dataset = random_split(
+#     res_128_dataset, [80, 10, 10])
+# res_128_test_loader = DataLoader(res_128_dataset, batch_size=1, shuffle=False)
+# test_results = trainer.test(model, dataloaders=res_128_test_loader)
+# _, _, test_dataset = random_split(
+#     dataset, [train_size, val_size, test_size])
 # # Initialize lists to collect ground truth and predictions
 # all_y = []
 # all_y_hat = []
