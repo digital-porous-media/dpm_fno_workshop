@@ -68,6 +68,6 @@ def convert_to_grouped_hdf5(data_root, output_file, dtype=np.float32):
 
 if __name__ == "__main__":
     convert_to_grouped_hdf5(
-        data_root='D:/fno_workshop_training_data/large_res',
-        output_file='darcy_data_res.h5'
+        data_root='D:/fno_workshop_training_data/large_fov',
+        output_file='darcy_data_fov.h5'
     )
