@@ -11,8 +11,6 @@ def read_raw_file(filepath, shape, dtype=np.float32):
 # Set your paths
 path = '/scratch/08780/cedar996/lbfoam/level_set/training_data'
 
-
-# Define the array shape (for example, 64x64x64)
 array_shape1 = (8, 128, 128)
 array_shape2 = (16, 128, 128)
 # Sorted list of file paths
