@@ -42,7 +42,8 @@ if __name__ == "__main__":
                   modes1=cfg.modes1,
                   modes2=cfg.modes2,
                   width=cfg.width,
-                  num_layers=cfg.n_layers)
+                  num_layers=cfg.n_layers,
+                  lr=cfg.learning_rate)
 
     # Train the model using Lightning trainer
     trainer = pl.Trainer(max_epochs=cfg.epochs,

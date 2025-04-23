@@ -5,8 +5,6 @@ import torch.nn.functional as F
 import lightning as pl
 import numpy as np
 
-import matplotlib.pyplot as plt
-
 torch.manual_seed(0)
 np.random.seed(0)
 
