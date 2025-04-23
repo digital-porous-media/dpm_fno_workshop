@@ -90,7 +90,7 @@ class MCFDataset(Dataset):
         try:
             self.file = h5py.File(self.data_path, 'r')
             # Load data from .h5py files
-            input_field = self.file['t_in'][idx]
+            input_field = self.file['t_in'][self.image_ids[idx]]
             input_field = np.transpose(input_field, (1, 2, 0))
             input_field, _, _ = self.z_score_normalize(input_field)
 
@@ -98,7 +98,7 @@ class MCFDataset(Dataset):
             input_field = input_field.reshape(128, 128, 1, self.t_in).repeat([1, 1, self.t_out, 1])
 
             # Target fields
-            output_field = self.file['t_out'][idx]
+            output_field = self.file['t_out'][self.image_ids[idx]]
             output_field = np.transpose(output_field, (1, 2, 0))
             output_field, original_means, original_stds = self.z_score_normalize(output_field)
 
