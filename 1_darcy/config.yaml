@@ -1,0 +1,18 @@
+# General parameters
+net_name: "workshop_darcy"
+seed: 185371
+
+# Training parameters
+learning_rate: 0.0005
+batch_size: 1
+epochs: 50
+val_interval: 10
+patience: 9999 # Early stopping patience
+
+# Model architecture
+modes1: 6
+modes2: 6
+width: 64
+
+
+

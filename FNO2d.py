@@ -234,30 +234,8 @@ class FNO2d(pl.LightningModule):
         y_hat = self(x)
         loss = F.mse_loss(y_hat, y)
         self.log('test_loss', loss, on_step=True, on_epoch=True)
-        plt.figure(figsize=(16, 4))
-        plt.subplot(1, 4, 1)
-        plt.imshow(x.squeeze().detach().cpu().numpy(), cmap="plasma")
-        plt.title("Permeability")
-        plt.colorbar()
-        plt.subplot(1, 4, 2)
-        plt.imshow(y.squeeze().detach().cpu().numpy(),
-                   cmap="plasma", vmin=0, vmax=1)
-        plt.title("True Solution")
-        plt.colorbar()
-        plt.subplot(1, 4, 3)
-        plt.imshow(y_hat.squeeze().detach().cpu().numpy(),
-                   cmap="plasma", vmin=0, vmax=1)
-        plt.title("Predicted Solution")
-        plt.colorbar()
-        plt.subplot(1, 4, 4)
-        plt.imshow(
-            torch.abs(y_hat - y).squeeze().detach().cpu().numpy(), cmap="plasma")
-        plt.title("Absolute Error")
-        plt.colorbar()
-        plt.show()
 
-        # loss = F.mse_loss(y_hat, y)
-        return {"x": x, "y_hat": y_hat, "y": y}
+        return {"loss": loss}
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=5e-4)
