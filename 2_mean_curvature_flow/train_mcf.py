@@ -9,6 +9,8 @@ from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from network.FNO3d import FNO3D
 
 from dataloading import MCFDataset, mcf_dataloader
+from torch.utils.data import DataLoader, random_split
+# from mcf_dataloading import MCFDataset
 from omegaconf import OmegaConf
 
 import torch
@@ -23,8 +25,10 @@ if __name__ == "__main__":
 
     # Load the data
     seed = cfg.seed
+    # dataset = MCFDataset("mc_flow_data.h5")
+    n_samples = 160 # len(dataset)
 
-    n_samples = 160
+    # Train size, val size, test size
     split = [0.6, 0.2, 0.2]
     image_ids = np.random.randint(low=0, high=159, size=(n_samples,))
     train_loader, val_loader, test_loader = mcf_dataloader(image_ids,
@@ -35,6 +39,10 @@ if __name__ == "__main__":
                                                            split=split,
                                                            num_workers=2,
                                                            pin_memory=True)
+
+    # train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(dataset, split)
+    # train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+    # val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
     # Instantiate the model
     print('Instantiating a new model...')

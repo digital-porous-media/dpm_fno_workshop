@@ -52,8 +52,8 @@ class DarcyDataset(Dataset):
         y = torch.tensor(self.pressure[idx], dtype=self.dtype)
 
         # Add channel dimension (1, H, W) if needed, assuming it's 2D
-        x = x.unsqueeze(-1)  # (H, W) -> (1, H, W)
-        y = y.unsqueeze(-1)  # (H, W) -> (1, H, W)
+        x = x.unsqueeze(-1)  # (H, W) -> (H, W, 1)
+        y = y.unsqueeze(-1)  # (H, W) -> (H, W, 1)
 
         return x, y
 
@@ -96,11 +96,13 @@ class MCFDataset(Dataset):
 
             input_field = torch.from_numpy(input_field).float()
             input_field = input_field.reshape(128, 128, 1, self.t_in).repeat([1, 1, self.t_out, 1])
+            # print(input_field.shape)
 
             # Target fields
             output_field = self.file['t_out'][self.image_ids[idx]]
             output_field = np.transpose(output_field, (1, 2, 0))
             output_field, original_means, original_stds = self.z_score_normalize(output_field)
+            # print(output_field.shape)
 
         except FileNotFoundError as e:
             raise FileNotFoundError(f"File {e} not found.")

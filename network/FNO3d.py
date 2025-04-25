@@ -5,13 +5,9 @@ import numpy as np
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau, StepLR, CosineAnnealingLR
 import lightning as pl
-torch.manual_seed(0)
-np.random.seed(0)
 
 
-################################################################
-# fourier layer
-################################################################
+# --- Spectral Convolution ---
 class SpectralConv3d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1, modes2, modes3):
         super(SpectralConv3d, self).__init__()
@@ -41,6 +37,7 @@ class SpectralConv3d(nn.Module):
         self.modes2 = modes2
         self.modes3 = modes3
 
+        # Initialize parameter weights
         self.scale = (1 / (in_channels * out_channels))
         self.weights1 = nn.Parameter(
             self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, self.modes3, dtype=torch.cfloat))
@@ -50,12 +47,6 @@ class SpectralConv3d(nn.Module):
             self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, self.modes3, dtype=torch.cfloat))
         self.weights4 = nn.Parameter(
             self.scale * torch.rand(in_channels, out_channels, self.modes1, self.modes2, self.modes3, dtype=torch.cfloat))
-
-    # Complex multiplication
-    @staticmethod
-    def complex_multiplication3d(a, b):
-        # (batch, in_channel, x,y,z), (in_channel, out_channel, x,y,z) -> (batch, out_channel, x,y,z)
-        return torch.einsum("bixyz,ioxyz->boxyz", a, b)
 
     def forward(self, x):
         batchsize = x.shape[0]
@@ -78,7 +69,29 @@ class SpectralConv3d(nn.Module):
         # Return to physical space
         x = torch.fft.irfftn(out_ft, s=(x.size(-3), x.size(-2), x.size(-1)))
         return x
-    
+
+    # Complex multiplication
+    @staticmethod
+    def complex_multiplication3d(a, b):
+        """
+        Complex 2D multiplication between input tensor `a` and weight tensor `b`.
+
+        Parameters:
+        ---
+        a: torch.Tensor,
+            Complex input tensor of shape (batch_size, in_channels, x, y, z/t)
+
+        b: torch.Tensor, shape (in_channel, out_channel, x, y, z/t)
+            Complex weight tensor of shape (in_channels, out_channels, x, y, z/t)
+
+        Returns:
+        ---
+        torch.Tensor
+            Complex output tensor of shape (batch_size, out_channels, x, y, z/t)
+        """
+        return torch.einsum("bixyz,ioxyz->boxyz", a, b)
+
+# --- FNO Block ---
 class FourierBlock3D(nn.Module):
     """
     Single FNO block with spectral convolution, Conv3D, and activation function.
@@ -115,7 +128,7 @@ class FourierBlock3D(nn.Module):
         x = F.gelu(x)
         return x
 
-
+# --- Projection Network ---
 class LP(nn.Module):
     def __init__(self, in_channels, out_channels, mid_channels):
         super(LP, self).__init__()
@@ -128,11 +141,29 @@ class LP(nn.Module):
         x = self.lp2(x)
         return x
 
+# --- Full 3D FNO Network ---
 class FNO3D(pl.LightningModule):
+    """
+    Full 3D FNO network. It contains `num_layers` FNO blocks.
+
+    This network performs the following operations:
+    1. Lift the input channels to the desired number of channels
+    2. Perform `num_layers` layers of the integral operators v' = (W + K)(v)
+    3. Project the channel space to the output space
+
+    Input:
+    ---
+        torch.Tensor, shape (batch_size, x, y, z/t, channels=10)
+            Coefficients or initial condition and positional encoding (a(x, y), x, y, z/t)
+    Output:
+    ---
+        torch.Tensor, shape (batch_size, x, y, channels=1)
+            Predicted solution
+    """
     def __init__(self,
                  net_name='Blah',
                  in_channels=10,
-                 out_channels=3,
+                 out_channels=1,
                  modes1=8,
                  modes2=8,
                  modes3=8,
@@ -140,6 +171,26 @@ class FNO3D(pl.LightningModule):
                  num_layers=4,
                  lr=1e-3,
                  ):
+        """
+        Parameters:
+        ---
+            in_channels: int,
+                Number of input channels. This corresponds to the number of input timesteps for 2D + t problems. Default = 10.
+            out_channels: int,
+                Number of output channels. For 2D + t problems, this should be 1. Default = 1. 
+            width: int,
+                Number of higher-dimensional channels. Default = 32.
+            num_layers: int,
+                Number of FNO blocks in the network. Default = 4.
+            modes1: int,
+                Number of Fourier modes to use in the first dimension. Default = 8.
+            modes2: int,
+                Number of Fourier modes to use in the second dimension. Default = 8.
+            modes3: int,
+                Number of Fourier modes to use in the third dimension. Default = 8.
+            lr: float,
+                Initial learning rate. Default = 1e-3.
+        """
 
         super(FNO3D, self).__init__()
         self.net_name = net_name
@@ -155,7 +206,7 @@ class FNO3D(pl.LightningModule):
 
         self.padding = 6
 
-        self.p = nn.Linear(self.input_channels + 3, self.width)  # input channel is 3: (sigma(x, y, z), x, y, z)
+        self.p = nn.Linear(self.input_channels + 3, self.width)
 
         self.fno_blocks = nn.ModuleList([
             FourierBlock3D(self.width, self.modes1, self.modes2, self.modes3) for _ in range(self.num_layers)
@@ -185,7 +236,7 @@ class FNO3D(pl.LightningModule):
         x = x.permute(0, 2, 3, 4, 1)  # XM: dimension coversion
         x = self.q(x)
 
-        return x.float()
+        return x
 
     @staticmethod
     def get_grid(shape, device):
@@ -204,11 +255,8 @@ class FNO3D(pl.LightningModule):
         yhat = torch.squeeze(yhat, dim=-1)
 
         loss = F.mse_loss(yhat, y)
-        # for j, jhat in zip([j], [jhat]):
-        #     j_loss = F.mse_loss(j.view((1, -1)), jhat.view((1, -1)))
-        #     loss += self.beta_1 * j_loss  # + self.beta_2 * div_loss
 
-        self.log("loss", loss, on_step=False, on_epoch=True, logger=True, sync_dist=True)  # rank_zero_only=True)
+        self.log("loss", loss, on_step=False, on_epoch=True, logger=True, sync_dist=True)
 
         return loss
 
@@ -218,11 +266,8 @@ class FNO3D(pl.LightningModule):
         yhat = torch.squeeze(yhat, dim=-1)
 
         val_loss = F.mse_loss(yhat, y)
-        # for j, jhat in zip([j], [jhat]):
-        #     j_loss = F.mse_loss(j.view((1, -1)), jhat.view((1, -1)))
-        #     val_loss += self.beta_1 * j_loss  # + self.beta_2 * div_loss
         self.log("val_loss", val_loss, on_step=False, on_epoch=True, logger=True,
-                 sync_dist=True)  # rank_zero_only=True)
+                 sync_dist=True)
 
         return val_loss
 
@@ -233,17 +278,12 @@ class FNO3D(pl.LightningModule):
         yhat = torch.squeeze(yhat, dim=-1)
 
         test_loss = F.mse_loss(yhat, y)
-        # component_loss = []
-        # for j, jhat in zip([j], [jhat]):
-        #     j_loss = F.mse_loss(j.view((1, -1)), jhat.view((1, -1)))
-        #     component_loss.append(j_loss)
-        #     test_loss += self.beta_1 * j_loss  # + self.beta_2 * div_loss
+
         self.log("test_loss", test_loss, on_step=False, on_epoch=True, logger=True,
-                 sync_dist=True)  # rank_zero_only=True)
+                 sync_dist=True)
 
         test_metrics = {
             'loss': test_loss,
-            # 'component_loss': component_loss
         }
 
         return test_metrics
@@ -251,23 +291,23 @@ class FNO3D(pl.LightningModule):
     def predict_step(self, batch, batch_idx):
         sigma, y, means, stds = batch
         yhat = self(sigma)
-        print('Normal prediction range: ', yhat.min(), yhat.max())
-        print('Normal truth range: ', y.min(), y.max())
+        # print('Normal prediction range: ', yhat.min(), yhat.max())
+        # print('Normal truth range: ', y.min(), y.max())
 
         yhat = torch.squeeze(yhat, dim=-1)
         yhat = self.z_score_back_transform(yhat, means, stds)
         y = self.z_score_back_transform(y, means, stds)
-        print('Back transform prediction range: ', yhat.min(), yhat.max())
-        print('Back transform truth range: ', y.min(), y.max())
-        # binary_predictions = (jhat <= 0).float()
-        # j = (j <= 0).float()
+        # print('Back transform prediction range: ', yhat.min(), yhat.max())
+        # print('Back transform truth range: ', y.min(), y.max())
+
         predictions = {
-            'j': y,
-            'jhat': yhat  # binary_predictions,
+            'y': y,
+            'yhat': yhat
         }
         return predictions
 
-    def z_score_back_transform(self, normalized_data, means, stds):
+    @staticmethod
+    def z_score_back_transform(normalized_data, means, stds):
         """
         Back-transform Z-score normalized data to its original scale.
         Args:
@@ -289,13 +329,15 @@ class FNO3D(pl.LightningModule):
         original_data = (normalized_data * stds) + means
         return original_data
 
-    def back_transform_11(self, normalized_data, min_val, max_val):
+    @staticmethod
+    def back_transform_11(normalized_data, min_val, max_val):
         range_val = max_val - min_val
         range_val[range_val == 0] = 1
         original = (normalized_data + 1) * range_val / 2 + min_val
         return original
 
-    def back_transform_01(self, normalized_data, min_val, max_val):
+    @staticmethod
+    def back_transform_01(normalized_data, min_val, max_val):
         range_val = max_val - min_val
         range_val[range_val == 0] = 1
         original = normalized_data * range_val + min_val

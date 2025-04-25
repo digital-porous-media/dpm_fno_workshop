@@ -1,0 +1,9 @@
+net_name: workshop_mcf
+in_channels: 8
+out_channels: 1
+modes1: 12
+modes2: 12
+modes3: 3
+width: 24
+num_layers: 4
+lr: 0.001

@@ -5,10 +5,9 @@ import torch.nn.functional as F
 import lightning as pl
 import numpy as np
 
-torch.manual_seed(0)
-np.random.seed(0)
-
-
+################################################################
+# Spectral convolution
+################################################################
 class SpectralConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1, modes2):
         """
@@ -27,9 +26,7 @@ class SpectralConv2d(nn.Module):
         """
         super(SpectralConv2d, self).__init__()
 
-        # Number of input channels (features)
         self.in_channels = in_channels
-        # Number of output channels
         self.out_channels = out_channels
 
         # Number of Fourier modes to multiply in each dimension. Maximum floor(N/2) + 1
@@ -141,23 +138,33 @@ class FNO2D(pl.LightningModule):
             Predicted solution
     """
 
-    def __init__(self, net_name="FNO2D", width=32, num_layers=4, modes1=8, modes2=8, lr=5e-4, hidden_p_channels=128):
-        super(FNO2D, self).__init__()
+    def __init__(self,
+                 net_name="FNO2D",
+                 width=32,
+                 num_layers=4, 
+                 modes1=8,
+                 modes2=8,
+                 lr=5e-4,
+                 hidden_p_channels=128):
         """
         Parameters:
         ---
             width: int,
-                Number of higher-dimensional channels. Default = 20.
+                Number of higher-dimensional channels. Default = 32.
             num_layers: int,
                 Number of FNO blocks in the network. Default = 4.
             modes1: int,
                 Number of Fourier modes to use in the first dimension. Default = 8.
             modes2: int,
                 Number of Fourier modes to use in the second dimension. Default = 8.
+            lr: float,
+                Learning rate. Default = 5e-4.
             hidden_p_channels: int,
                 Number of channels for the hidden layer in the projecting step. Default = 128.
         """
+        super(FNO2D, self).__init__()
         self.net_name = net_name
+        
         self.modes1 = modes1
         self.modes2 = modes2
         self.width = width

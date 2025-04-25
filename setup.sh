@@ -37,5 +37,8 @@ echo "📦 Installing other Python dependencies..."
 pip install -r requirements.txt
 
 echo ""
+echo "Downloading Mean Curvature Flow Data"
+gdown https://drive.google.com/uc?id=1n9nNCTWsaF2BMElcHpNkDupIO1f_lCOX -O "./2_mean_curvature_flow/mc_flow_data.h5"
+echo ""
 echo "✅ Setup complete!"
 echo "💡 Run 'source .fno_venv/bin/activate' to enter the environment."

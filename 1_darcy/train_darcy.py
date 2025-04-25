@@ -21,10 +21,11 @@ if __name__ == "__main__":
     dataset = DarcyDataset('darcy_data_res.h5', resolution='resolution_64')
 
     # Specify the sizes of your splits
-    train_size = int(0.7 * len(dataset))  # 70% for training
-    val_size = int(0.15 * len(dataset))   # 15% for validation
-    test_size = len(dataset) - train_size - \
-        val_size  # Remaining 15% for testing
+
+    train_size = 0.7#int(0.7 * len(dataset))  # 70% for training
+    val_size = 0.15#int(0.15 * len(dataset))   # 15% for validation
+    test_size = 0.15#len(dataset) - train_size - \
+        # val_size  # Remaining 15% for testing
 
     # Split the dataset into training, validation, and test sets
     train_dataset, val_dataset, _ = random_split(
