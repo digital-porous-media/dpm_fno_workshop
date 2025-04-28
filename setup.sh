@@ -29,13 +29,13 @@ if [[ "$CLUSTER" == "ls6" ]] || [[ "$CLUSTER" == "vista" ]]; then
     source $WORK/.fno_venv/bin/activate
     echo ""
     echo "Upgrading pip..."
-    pip3 install --upgrade pip3
+    python3 -m pip install --upgrade pip
 
     # ---- Install PyTorch on LS6 ----
     if [[ "$CLUSTER" == "ls6" ]]; then
         echo ""
         echo "Installing PyTorch..."
-        pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+        python3 -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
     fi
 
     # ---- Get Mean Curvature Flow data ----
@@ -52,8 +52,8 @@ fi
 
 echo ""
 echo "📦 Installing other Python dependencies..."
-pip3 install -r requirements.txt
+python3 -m pip install -r requirements.txt
 
 echo ""
 echo "✅ Setup complete!"
-echo "💡 Run 'source .fno_venv/bin/activate' to enter the environment."
+echo "💡 Run 'source $WORK/.fno_venv/bin/activate' to enter the environment."
