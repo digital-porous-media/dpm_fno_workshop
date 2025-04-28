@@ -19,10 +19,14 @@ echo "Setting up on $CLUSTER"
 # ------------------------------
 # 🚀 Setup Script for Workshop
 # ------------------------------
+if [[ "$CLUSTER" == "vista" ]]; then
+    module load gcc cuda
+    module load python3_mpi
+elif [[ "$CLUSTER" == "ls6" ]]; then
+    module load python3
+fi
 
 if [[ "$CLUSTER" == "ls6" ]] || [[ "$CLUSTER" == "vista" ]]; then
-    module load python3
-
     echo ""
     echo "Creating virtual environment..."
     python3 -m venv $WORK/.fno_venv
@@ -41,10 +45,10 @@ if [[ "$CLUSTER" == "ls6" ]] || [[ "$CLUSTER" == "vista" ]]; then
     # ---- Get Mean Curvature Flow data ----
     echo ""
     echo "Getting Mean Curvature Flow Data"
-    cp '/scratch/08780/cedar996/lbfoam/level_set/mc_flow_data.h5' ./2_mean_curvature_flow/mc_flow_data.h5
+    cp '/work/06898/bchang/mc_flow_data.h5' ./2_mean_curvature_flow/mc_flow_data.h5
 fi
 
-if [[ "$CLUSTER"=="Colab" ]]; then
+if [[ "$CLUSTER" == "Colab" ]]; then
     echo ""
     echo "Getting Mean Curvature Flow Data"
     gdown https://drive.google.com/uc?id=1n9nNCTWsaF2BMElcHpNkDupIO1f_lCOX -O "./2_mean_curvature_flow/mc_flow_data.h5"

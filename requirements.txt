@@ -2,5 +2,4 @@ numpy
 h5py
 lightning
 matplotlib
-gdown
 omegaconf
