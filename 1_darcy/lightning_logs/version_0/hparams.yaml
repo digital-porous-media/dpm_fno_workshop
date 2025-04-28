@@ -1,7 +1,0 @@
-net_name: workshop_darcy
-width: 64
-num_layers: 4
-modes1: 6
-modes2: 6
-lr: 0.0005
-hidden_p_channels: 128
