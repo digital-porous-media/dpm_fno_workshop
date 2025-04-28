@@ -1,44 +1,59 @@
 #!/bin/bash
 
+# ---- Detect cluster ----
+HOSTNAME=$(hostname)
+
+if [[ "$HOSTNAME" == *"ls6"* ]]; then
+    CLUSTER="ls6"
+elif [[ "$HOSTNAME" == *"vista"* ]]; then
+    CLUSTER="vista"
+elif [[ -n "$COLAB_GPU" ]] || [[ "$HOME" == "/root" && -d "/content" ]]; then
+    CLUSTER="Colab"
+else
+    echo "Unknown cluster: $HOSTNAME"
+    exit 1
+fi
+
+echo "Setting up on $CLUSTER"
+
 # ------------------------------
 # 🚀 Setup Script for Workshop
 # ------------------------------
 
-module load python3
+if [[ "$CLUSTER" == "ls6" ]] || [[ "$CLUSTER" == "vista" ]]; then
+    module load python3
 
-echo ""
-echo "Creating virtual environment..."
-python3 -m venv .fno_venv
-source $WORK/.fno_venv/bin/activate
+    echo ""
+    echo "Creating virtual environment..."
+    python3 -m venv $WORK/.fno_venv
+    source $WORK/.fno_venv/bin/activate
+    echo ""
+    echo "Upgrading pip..."
+    pip3 install --upgrade pip3
 
-echo ""
-echo "Upgrading pip..."
-pip install --upgrade pip
+    # ---- Install PyTorch on LS6 ----
+    if [[ "$CLUSTER" == "ls6" ]]; then
+        echo ""
+        echo "Installing PyTorch..."
+        pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+    fi
 
-# ------------------------------
-# 🧠 Choose your torch version
-# ------------------------------
+    # ---- Get Mean Curvature Flow data ----
+    echo ""
+    echo "Getting Mean Curvature Flow Data"
+    cp '/scratch/08780/cedar996/lbfoam/level_set/mc_flow_data.h5' ./2_mean_curvature_flow/mc_flow_data.h5
+fi
 
-# Uncomment the one you want:
-
-# CPU-only version
-# TORCH_INSTALL="pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu"
-
-
-# GPU (CUDA 12.1)
-TORCH_INSTALL="pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124"
-
-echo ""
-echo "📦 Installing PyTorch..."
-eval $TORCH_INSTALL
+if [[ "$CLUSTER"=="Colab" ]]; then
+    echo ""
+    echo "Getting Mean Curvature Flow Data"
+    gdown https://drive.google.com/uc?id=1n9nNCTWsaF2BMElcHpNkDupIO1f_lCOX -O "./2_mean_curvature_flow/mc_flow_data.h5"
+fi
 
 echo ""
 echo "📦 Installing other Python dependencies..."
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 
-echo ""
-echo "Downloading Mean Curvature Flow Data"
-gdown https://drive.google.com/uc?id=1n9nNCTWsaF2BMElcHpNkDupIO1f_lCOX -O "./2_mean_curvature_flow/mc_flow_data.h5"
 echo ""
 echo "✅ Setup complete!"
 echo "💡 Run 'source .fno_venv/bin/activate' to enter the environment."
