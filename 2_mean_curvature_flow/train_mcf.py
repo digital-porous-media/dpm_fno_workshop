@@ -37,8 +37,9 @@ if __name__ == "__main__":
                                                            t_out=cfg.T_out,
                                                            seed=cfg.seed,
                                                            split=split,
-                                                           num_workers=2,
-                                                           pin_memory=True)
+                                                           num_workers=8,
+                                                           pin_memory=True,
+                                                           )
 
     # train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(dataset, split)
     # train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
@@ -64,10 +65,10 @@ if __name__ == "__main__":
                            mode="min")]
 
     trainer = pl.Trainer(max_epochs=cfg.epochs,
-                         strategy='auto',
+                         accelerator='auto',
                          callbacks=cbs,
                          check_val_every_n_epoch=cfg.val_interval,
-                         log_every_n_steps=n_samples * split[0]
+                         log_every_n_steps=n_samples * split[0],
                          )
 
     trainer.fit(model, train_loader, val_loader)

@@ -56,7 +56,7 @@ class SpectralConv3d(nn.Module):
         x_ft = torch.fft.rfftn(x, dim=[-3, -2, -1])
 
         # Multiply relevant Fourier modes
-        out_ft = torch.zeros(batchsize, self.out_channels, x.size(-3), x.size(-2), x.size(-1) // 2 + 1, dtype=torch.cfloat)
+        out_ft = torch.zeros(batchsize, self.out_channels, x.size(-3), x.size(-2), x.size(-1) // 2 + 1, dtype=torch.cfloat, device=x.device)
         out_ft[:, :, :self.modes1, :self.modes2, :self.modes3] = \
             self.complex_multiplication3d(x_ft[:, :, :self.modes1, :self.modes2, :self.modes3], self.weights1)
         out_ft[:, :, -self.modes1:, :self.modes2, :self.modes3] = \
@@ -120,13 +120,12 @@ class FourierBlock3D(nn.Module):
 
     def forward(self, x):
         device = x.device
-        x1 = self.spectral_conv(x)
-        x2 = self.w(x)
-        x1 = x1.to(device)
-        x2 = x2.to(device)
-        x = x1 + x2
-        x = F.gelu(x)
-        return x
+        x = self.spectral_conv(x) + self.w(x)
+        #x1 = x1.to(device)
+        #x2 = x2.to(device)
+        #x = x1 + x2
+        #x = F.gelu(x)
+        return F.gelu(x)
 
 # --- Projection Network ---
 class LP(nn.Module):
@@ -218,22 +217,25 @@ class FNO3D(pl.LightningModule):
 
     def forward(self, x):
         # Get the grid of x
+        
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
-
+        
         # Lift input
         x = self.p(x)
 
         # Permute the dimensions from (batch_size, x, y, z, channels) to (batch_size, channels, x, y, z)
         # nn.Linear operates on the last dimension
         x = x.permute(0, 4, 1, 2, 3)
+        
         x = F.pad(x, [0, self.padding])  # XM: delete two paddding
-
+        
         for layer in self.fno_blocks:
             x = layer(x)
 
         x = x[..., :-self.padding]  # XM: delete two padding
         x = x.permute(0, 2, 3, 4, 1)  # XM: dimension coversion
+        
         x = self.q(x)
 
         return x
@@ -241,13 +243,20 @@ class FNO3D(pl.LightningModule):
     @staticmethod
     def get_grid(shape, device):
         batchsize, size_x, size_y, size_z = shape[:-1]
-        gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
-        gridx = gridx.reshape(1, size_x, 1, 1, 1).repeat([batchsize, 1, size_y, size_z, 1])
-        gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
-        gridy = gridy.reshape(1, 1, size_y, 1, 1).repeat([batchsize, size_x, 1, size_z, 1])
-        gridz = torch.tensor(np.linspace(0, 1, size_z), dtype=torch.float)
-        gridz = gridz.reshape(1, 1, 1, size_z, 1).repeat([batchsize, size_x, size_y, 1, 1])
-        return torch.cat((gridx, gridy, gridz), dim=-1).to(device)
+        gridx = torch.linspace(0, 1, steps=size_x, dtype=torch.float, device=device)#.reshape(1, size_x, 1, 1, 1).repeat([batchsize, 1, size_y, size_z, 1])
+        gridy = torch.linspace(0, 1, steps=size_y, dtype=torch.float, device=device)#.reshape(1, 1, size_y, 1, 1).repeat([batchsize, size_x, 1, size_z, 1])
+        gridz = torch.linspace(0, 1, steps=size_z, dtype=torch.float, device=device)#.reshape(1, 1, 1, size_z, 1).repeat([batchsize, size_x, size_y, 1, 1])
+
+        gridx = gridx.view(1, size_x, 1, 1, 1).expand(batchsize, -1, size_y, size_z, -1)
+        gridy = gridy.view(1, 1, size_y, 1, 1).expand(batchsize, size_x, -1, size_z, -1)
+        gridz = gridz.view(1, 1, 1, size_z, 1).expand(batchsize, size_x, size_y, -1, -1)
+        #gridx = torch.tensor(np.linspace(0, 1, size_x), dtype=torch.float)
+        #gridx = gridx.reshape(1, size_x, 1, 1, 1).repeat([batchsize, 1, size_y, size_z, 1])
+        #gridy = torch.tensor(np.linspace(0, 1, size_y), dtype=torch.float)
+        #gridy = gridy.reshape(1, 1, size_y, 1, 1).repeat([batchsize, size_x, 1, size_z, 1])
+        #gridz = torch.tensor(np.linspace(0, 1, size_z), dtype=torch.float)
+        #gridz = gridz.reshape(1, 1, 1, size_z, 1).repeat([batchsize, size_x, size_y, 1, 1])
+        return torch.cat((gridx, gridy, gridz), dim=-1)#.to(device)
 
     def training_step(self, batch, batch_idx):
         sigma, y, _, _ = batch

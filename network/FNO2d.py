@@ -48,7 +48,7 @@ class SpectralConv2d(nn.Module):
         x_ft = torch.fft.rfft2(x)
         # Initialize output FFT tensor
         out_ft = torch.zeros(batchsize, self.out_channels,
-                             x.size(-2), x.size(-1) // 2 + 1, dtype=torch.cfloat)
+                             x.size(-2), x.size(-1) // 2 + 1, dtype=torch.cfloat, device=x.device)
         # Perform complex multiplication on lower Fourier modes
         out_ft[:, :, :self.modes1, :self.modes2] = \
             self.complex_multiplication2d(
@@ -109,14 +109,10 @@ class FourierBlock2D(nn.Module):
         self.w = nn.Conv2d(width, width, 1)
 
     def forward(self, x):
-        device = x.device
-        x1 = self.spectral_conv(x)
-        x2 = self.w(x)
-        x1 = x1.to(device)
-        x2 = x2.to(device)
-        x = x1 + x2
-        x = F.gelu(x)
-        return x
+        
+        x = self.spectral_conv(x) + self.w(x)
+
+        return F.gelu(x)
 
 
 class FNO2D(pl.LightningModule):

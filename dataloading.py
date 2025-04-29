@@ -78,8 +78,11 @@ def darcy_dataloader(h5_path, resolution, batch_size=16, shuffle=True, num_worke
 
 class MCFDataset(Dataset):
     def __init__(self, image_ids, data_path, t_in, t_out):
+        #self.file = h5py.File(data_path, 'r')
         self.image_ids = image_ids
         self.data_path = data_path
+        #self.t_input = self.file['t_in']
+        #self.t_output = self.file['t_out']
         self.t_in = t_in
         self.t_out = t_out
 
@@ -87,29 +90,31 @@ class MCFDataset(Dataset):
         return len(self.image_ids)
 
     def __getitem__(self, idx):
-        try:
-            self.file = h5py.File(self.data_path, 'r')
-            # Load data from .h5py files
-            input_field = self.file['t_in'][self.image_ids[idx]]
-            input_field = np.transpose(input_field, (1, 2, 0))
-            input_field, _, _ = self.z_score_normalize(input_field)
 
-            input_field = torch.from_numpy(input_field).float()
-            input_field = input_field.reshape(128, 128, 1, self.t_in).repeat([1, 1, self.t_out, 1])
-            # print(input_field.shape)
+        # Load data from .h5py files
+        self.File = h5py.File(self.data_path, "r")
 
-            # Target fields
-            output_field = self.file['t_out'][self.image_ids[idx]]
-            output_field = np.transpose(output_field, (1, 2, 0))
-            output_field, original_means, original_stds = self.z_score_normalize(output_field)
-            # print(output_field.shape)
+        t_input = self.File["t_in"]
+        t_output = self.File["t_out"]
+        
+        #input_field = self.file['t_in'][self.image_ids[idx]]
+        input_field = torch.tensor(t_input[idx], dtype=torch.float32)
+        input_field = torch.permute(input_field, (1, 2, 0))
+        input_field, _, _ = self.z_score_normalize(input_field)
 
-        except FileNotFoundError as e:
-            raise FileNotFoundError(f"File {e} not found.")
+        #input_field = torch.from_numpy(input_field).float()
+        input_field = input_field.reshape(128, 128, 1, self.t_in).repeat([1, 1, self.t_out, 1])
+        # print(input_field.shape)
 
-        output_field = torch.from_numpy(output_field).float()
-        original_means = torch.tensor(original_means)
-        original_stds = torch.tensor(original_stds)
+        # Target fields
+        output_field = torch.tensor(t_output[idx], dtype=torch.float32)
+        output_field = torch.permute(output_field, (1, 2, 0))
+        output_field, original_means, original_stds = self.z_score_normalize(output_field)
+        # print(output_field.shape)
+
+        #output_field = torch.from_numpy(output_field).float()
+        #original_means = torch.tensor(original_means)
+        #original_stds = torch.tensor(original_stds)
         # print('Normal Target', output_field.min(), output_field.max())
         return input_field, output_field, original_means, original_stds
 
@@ -117,14 +122,14 @@ class MCFDataset(Dataset):
         """
         Perform Z-score normalization along the last dimension (seq_len).
         Args:
-            data (np.ndarray): Input data of shape [height, width, seq_len].
+            data (torch.tensor): Input data of shape [height, width, seq_len].
         Returns:
-            normalized_data (np.ndarray): Normalized data of shape [height, width, seq_len].
-            means (np.ndarray): Means along the seq_len dimension, shape [height, width].
-            stds (np.ndarray): Standard deviations along the seq_len dimension, shape [height, width].
+            normalized_data (torch.tensor): Normalized data of shape [height, width, seq_len].
+            means (torch.tensor): Means along the seq_len dimension, shape [height, width].
+            stds (torch.tensor): Standard deviations along the seq_len dimension, shape [height, width].
         """
-        means = np.mean(data, axis=-1, keepdims=True)  # Shape: [height, width, 1]
-        stds = np.std(data, axis=-1, keepdims=True)  # Shape: [height, width, 1]
+        means = torch.mean(data, dim=-1, keepdims=True)  # Shape: [height, width, 1]
+        stds = torch.std(data, dim=-1, keepdims=True)  # Shape: [height, width, 1]
         stds[stds == 0] = 1e-8
         normalized_data = (data - means) / stds
         return normalized_data, means, stds
@@ -207,58 +212,3 @@ def split_indices(indices, split, seed=None):
     test_ids = indices[(val_size + train_size):]
 
     return train_ids, val_ids, test_ids
-
-
-if __name__ == '__main__':
-    # Assuming the FNOHDF5Dataset is already defined
-    dataset = DarcyDataset('darcy_data.h5', resolution='resolution_128')
-
-    # Specify the sizes of your splits
-    train_size = int(0.7 * len(dataset))  # 70% for training
-    val_size = int(0.15 * len(dataset))   # 15% for validation
-    test_size = len(dataset) - train_size - \
-        val_size  # Remaining 15% for testing
-
-    # Split the dataset into training, validation, and test sets
-    train_dataset, val_dataset, test_dataset = random_split(
-        dataset, [train_size, val_size, test_size])
-
-    # Create DataLoaders for each split
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
-    # Extract a sample at a specific index (e.g., index 5)
-    # k, p = dataset_64[0]
-
-    # Now you can plot or use this sample
-    # plot_sample(x_sample, y_sample, idx=5)
-
-    # n64_trainloader = darcy_dataloader(
-    #     'darcy_data.h5', 'resolution_64', batch_size=16)
-
-    # plot_sample_idx(n64_trainloader, idx=5)
-    # with h5py.File('darcy_data.h5', 'r') as h5f:
-    # k = h5f['resolution_64']['permeability'][0]
-    # p = h5f['resolution_64']['pressure'][0]
-    # fig, ax = plt.subplots(1, 3, figsize=(12, 4))
-    # ax[0].imshow(k.squeeze(), cmap='viridis')
-    # ax[0].invert_yaxis()
-    # ax[1].imshow(p.squeeze(), cmap='plasma')
-    # ax[1].contour(p.squeeze(), levels=10, colors='k')
-    # ax[1].invert_yaxis()
-    # vx, vy = compute_velocity(p.squeeze(), k.squeeze())
-
-    # # vel = np.load(
-    # #     "D:/fno_workshop_training_data/N64/v_output/sample_0.npz")
-    # # vx = vel['vx']
-    # # vy = vel['vy']
-    # # print(vx.shape, vy.shape)
-    # magnitude = np.sqrt(vx**2 + vy**2)
-    # X, Y = np.meshgrid(np.arange(vx.shape[0]), np.arange(vx.shape[1]))
-
-    # # ax[2].quiver(X, Y, vx, vy, magnitude, cmap='plasma',
-    # #              units='xy', scale_units='xy', scale=0.85)
-    # ax[2].imshow(magnitude, cmap='plasma')
-    # # ax[2].contour(magnitude, levels=10, colors='k')
-    # ax[2].invert_yaxis()
-    # plt.show()
