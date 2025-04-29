@@ -35,12 +35,10 @@ if [[ "$CLUSTER" == "ls6" ]] || [[ "$CLUSTER" == "vista" ]]; then
     echo "Upgrading pip..."
     python3 -m pip install --upgrade pip
 
-    # ---- Install PyTorch on LS6 ----
-    if [[ "$CLUSTER" == "ls6" ]]; then
-        echo ""
-        echo "Installing PyTorch..."
-        python3 -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
-    fi
+    # ---- Install PyTorch ----
+    echo ""
+    echo "Installing PyTorch..."
+    python3 -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
     # ---- Get Mean Curvature Flow data ----
     echo ""
