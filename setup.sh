@@ -49,7 +49,11 @@ fi
 if [[ "$CLUSTER" == "Colab" ]]; then
     echo ""
     echo "Getting Mean Curvature Flow Data"
-    gdown https://drive.google.com/uc?id=1n9nNCTWsaF2BMElcHpNkDupIO1f_lCOX -O "./2_mean_curvature_flow/mc_flow_data.h5"
+    gdown https://drive.google.com/uc?id=1n9nNCTWsaF2BMElcHpNkDupIO1f_lCOX -O "dpm_fno_workshop/2_mean_curvature_flow/mc_flow_data.h5"
+
+    echo ""
+    echo "Getting pre-trained models"
+    gdown --folder https://drive.google.com/drive/folders/1RM6NFXvmXIyuQ0N20aJU3HqMTm4Ud4mx -O dpm_fno_workshop/
 fi
 
 echo ""
